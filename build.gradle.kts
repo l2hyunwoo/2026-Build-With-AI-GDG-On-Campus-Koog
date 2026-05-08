@@ -24,4 +24,9 @@ kotlin {
 
 application {
     mainClass.set("dev.community.gdg.campus.korea.koog.MainKt")
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+}
+
+tasks.named<JavaExec>("run") {
+    standardInput = System.`in`
 }

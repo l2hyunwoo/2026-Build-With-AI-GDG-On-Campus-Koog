@@ -4,12 +4,15 @@ import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.chatMemory.feature.ChatMemory
 import ai.koog.agents.chatMemory.feature.InMemoryChatHistoryProvider
+import ai.koog.agents.features.eventHandler.feature.handleEvents
 import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
 import ai.koog.prompt.executor.clients.google.GoogleModels
+import dev.community.gdg.campus.korea.koog.command.*
 import dev.community.gdg.campus.korea.koog.tools.readFile
 import dev.community.gdg.campus.korea.koog.tools.saveNote
 import dev.community.gdg.campus.korea.koog.tools.listFiles
 import dev.community.gdg.campus.korea.koog.tools.generateExamPrep
+import dev.community.gdg.campus.korea.koog.ui.Banner
 import kotlinx.coroutines.runBlocking
 
 val studyBuddyPrompt = """
@@ -28,7 +31,81 @@ fun main() = runBlocking {
     val apiKey = System.getenv("GOOGLE_API_KEY")
         ?: error("GOOGLE_API_KEY 환경변수를 설정해주세요!")
 
-    runStudyTeam(apiKey)
+    when (System.getProperty("studybuddy.mode")) {
+        "team" -> runStudyTeam(apiKey)
+        else -> runStudySession(apiKey)
+    }
+}
+
+// CLI 대화형 세션 (Banner + Command 패턴 적용)
+suspend fun runStudySession(apiKey: String) {
+    val commandRegistry = CommandRegistry()
+    commandRegistry.registerAll(
+        HelpCommand(commandRegistry),
+        ExitCommand(),
+        ClearCommand()
+    )
+
+    Banner.printWelcome()
+
+    var agent = createAgent(apiKey)
+
+    while (true) {
+        print("학생 > ")
+        val input = readLine()?.trim() ?: break
+        if (input.isBlank()) continue
+
+        // 슬래시 명령어 처리
+        if (input.startsWith("/")) {
+            when (val result = commandRegistry.execute(input)) {
+                is CommandResult.Exit -> {
+                    Banner.printGoodbye()
+                    return
+                }
+                is CommandResult.ClearSession -> {
+                    agent = createAgent(apiKey)
+                    continue
+                }
+                is CommandResult.Success -> continue
+                is CommandResult.Error -> {
+                    println("  ❌ ${result.message}")
+                    continue
+                }
+                null -> {
+                    println("  알 수 없는 명령어입니다. /help를 입력해보세요.")
+                    continue
+                }
+            }
+        }
+
+        val response = agent.run(input)
+        println("\n조교 > $response\n")
+    }
+}
+
+fun createAgent(apiKey: String): AIAgent<String, String> {
+    val toolRegistry = ToolRegistry {
+        tool(::readFile)
+        tool(::saveNote)
+        tool(::listFiles)
+        tool(::generateExamPrep)
+    }
+
+    return AIAgent(
+        promptExecutor = simpleGoogleAIExecutor(apiKey),
+        systemPrompt = studyBuddyPrompt,
+        llmModel = GoogleModels.Gemini2_5Flash,
+        toolRegistry = toolRegistry
+    ) {
+        install(ChatMemory) {
+            chatHistoryProvider = InMemoryChatHistoryProvider()
+            windowSize(20)
+        }
+        handleEvents {
+            onToolCallStarting { println("  🔧 [도구 호출] ${it.toolName}...") }
+            onToolCallCompleted { println("  ✅ [도구 완료] ${it.toolName}") }
+        }
+    }
 }
 
 // Multi-Agent 순차 오케스트레이션
@@ -83,62 +160,33 @@ suspend fun runStudyTeam(apiKey: String) {
         }
     )
 
-    println("=== 학습 전문가 팀 가동! ===\n")
+    println()
+    println("================================================")
+    println("   🎓 학습 전문가 팀 가동!")
+    println("================================================")
+    println()
 
-    // 1단계: 복습 정리
-    println("[1/3] 복습 정리가가 강의자료를 분석합니다...")
+    println("[1/3] 📖 복습 정리가가 강의자료를 분석합니다...")
     val reviewResult = reviewerAgent.run(
         "lecture-notes/week08-avl-tree.md 강의자료를 읽고 복습 노트를 만들어줘"
     )
-    println("복습 완료: $reviewResult\n")
+    println("  ✅ 복습 완료: $reviewResult\n")
 
-    // 2단계: 과제 분석 (복습 노트를 참조)
-    println("[2/3] 과제 도우미가 과제를 분석합니다...")
+    println("[2/3] 📝 과제 도우미가 과제를 분석합니다...")
     val assignmentResult = assignmentAgent.run(
         "assignments/hw-avl-tree.md 과제를 분석하고, notes/ 폴더의 복습 노트를 참고해서 풀이 가이드를 만들어줘. student-code/avl_tree.cpp도 확인해줘."
     )
-    println("과제 분석 완료: $assignmentResult\n")
+    println("  ✅ 과제 분석 완료: $assignmentResult\n")
 
-    // 3단계: 시험 대비 자료 생성 (모든 노트를 종합)
-    println("[3/3] 시험 대비가가 자료를 생성합니다...")
+    println("[3/3] 📊 시험 대비가가 자료를 생성합니다...")
     val examPrepResult = examPrepAgent.run(
         "notes/ 폴더의 모든 노트를 읽고 치트시트와 예상문제를 만들어줘"
     )
-    println("시험 대비 자료 완료: $examPrepResult")
+    println("  ✅ 시험 대비 자료 완료: $examPrepResult")
 
-    println("\n=== 전문가 팀 작업 완료! ===")
-}
-
-// ChatMemory 대화형 세션
-suspend fun runStudySession(apiKey: String) {
-    val toolRegistry = ToolRegistry {
-        tool(::readFile)
-        tool(::saveNote)
-        tool(::listFiles)
-        tool(::generateExamPrep)
-    }
-
-    val agent = AIAgent(
-        promptExecutor = simpleGoogleAIExecutor(apiKey),
-        systemPrompt = studyBuddyPrompt,
-        llmModel = GoogleModels.Gemini2_5Flash,
-        toolRegistry = toolRegistry
-    ) {
-        install(ChatMemory) {
-            chatHistoryProvider = InMemoryChatHistoryProvider()
-            windowSize(20)
-        }
-    }
-
-    println("=== 과제 도우미 시작 ===")
-    println("질문을 입력하세요 (종료: exit)\n")
-
-    while (true) {
-        print("학생 > ")
-        val input = readLine() ?: break
-        if (input == "exit") break
-
-        val response = agent.run(input)
-        println("\n조교 > $response\n")
-    }
+    println()
+    println("================================================")
+    println("   🎉 전문가 팀 작업 완료!")
+    println("================================================")
+    println()
 }
