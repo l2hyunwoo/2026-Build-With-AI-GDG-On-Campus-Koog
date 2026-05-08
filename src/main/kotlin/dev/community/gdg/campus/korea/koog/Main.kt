@@ -2,6 +2,8 @@ package dev.community.gdg.campus.korea.koog
 
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
+import ai.koog.agents.chatMemory.feature.ChatMemory
+import ai.koog.agents.chatMemory.feature.InMemoryChatHistoryProvider
 import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
 import ai.koog.prompt.executor.clients.google.GoogleModels
 import dev.community.gdg.campus.korea.koog.tools.readFile
@@ -25,6 +27,11 @@ fun main() = runBlocking {
     val apiKey = System.getenv("GOOGLE_API_KEY")
         ?: error("GOOGLE_API_KEY 환경변수를 설정해주세요!")
 
+    runStudySession(apiKey)
+}
+
+// ChatMemory 대화형 세션
+suspend fun runStudySession(apiKey: String) {
     val toolRegistry = ToolRegistry {
         tool(::readFile)
         tool(::saveNote)
@@ -36,13 +43,22 @@ fun main() = runBlocking {
         systemPrompt = studyBuddyPrompt,
         llmModel = GoogleModels.Gemini2_5Flash,
         toolRegistry = toolRegistry
-    )
+    ) {
+        install(ChatMemory) {
+            chatHistoryProvider = InMemoryChatHistoryProvider()
+            windowSize(20)
+        }
+    }
 
-    val response = agent.run("""
-        1. assignments/hw-avl-tree.md 과제 요구사항을 읽어줘
-        2. notes/ 폴더에 있는 기존 복습 노트도 참고해줘
-        3. student-code/avl_tree.cpp 학생 코드를 분석해줘
-        4. 과제 풀이 가이드를 만들어서 notes/hw-avl-guide.md로 저장해줘
-    """)
-    println(response)
+    println("=== 과제 도우미 시작 ===")
+    println("질문을 입력하세요 (종료: exit)\n")
+
+    while (true) {
+        print("학생 > ")
+        val input = readLine() ?: break
+        if (input == "exit") break
+
+        val response = agent.run(input)
+        println("\n조교 > $response\n")
+    }
 }
