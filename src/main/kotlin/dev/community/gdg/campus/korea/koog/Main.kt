@@ -6,6 +6,7 @@ import ai.koog.prompt.executor.llms.all.simpleGoogleAIExecutor
 import ai.koog.prompt.executor.clients.google.GoogleModels
 import dev.community.gdg.campus.korea.koog.tools.readFile
 import dev.community.gdg.campus.korea.koog.tools.saveNote
+import dev.community.gdg.campus.korea.koog.tools.listFiles
 import kotlinx.coroutines.runBlocking
 
 val studyBuddyPrompt = """
@@ -27,6 +28,7 @@ fun main() = runBlocking {
     val toolRegistry = ToolRegistry {
         tool(::readFile)
         tool(::saveNote)
+        tool(::listFiles)
     }
 
     val agent = AIAgent(
@@ -36,8 +38,11 @@ fun main() = runBlocking {
         toolRegistry = toolRegistry
     )
 
-    val response = agent.run(
-        "lecture-notes/week07-bst-basics.md 강의자료를 읽고, 핵심만 정리해서 복습 노트로 저장해줘"
-    )
+    val response = agent.run("""
+        1. assignments/hw-avl-tree.md 과제 요구사항을 읽어줘
+        2. notes/ 폴더에 있는 기존 복습 노트도 참고해줘
+        3. student-code/avl_tree.cpp 학생 코드를 분석해줘
+        4. 과제 풀이 가이드를 만들어서 notes/hw-avl-guide.md로 저장해줘
+    """)
     println(response)
 }
