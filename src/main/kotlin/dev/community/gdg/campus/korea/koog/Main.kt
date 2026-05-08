@@ -9,6 +9,7 @@ import ai.koog.prompt.executor.clients.google.GoogleModels
 import dev.community.gdg.campus.korea.koog.tools.readFile
 import dev.community.gdg.campus.korea.koog.tools.saveNote
 import dev.community.gdg.campus.korea.koog.tools.listFiles
+import dev.community.gdg.campus.korea.koog.tools.generateExamPrep
 import kotlinx.coroutines.runBlocking
 
 val studyBuddyPrompt = """
@@ -36,6 +37,7 @@ suspend fun runStudySession(apiKey: String) {
         tool(::readFile)
         tool(::saveNote)
         tool(::listFiles)
+        tool(::generateExamPrep)
     }
 
     val agent = AIAgent(
